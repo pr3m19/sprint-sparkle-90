@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
   Activity, Users, Target, AlertTriangle, TrendingUp, Wrench,
-  Shield, Database, KeyRound, RefreshCw, Layers,
+  Shield, Database, KeyRound, RefreshCw, Box, Cpu, Radio,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -25,7 +25,7 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "SRE Capacity Tracker" },
-      { name: "description", content: "Track sprint and quarterly effort allocation across SRE team, pillars, tools and EKS admin." },
+      { name: "description", content: "Mission-control view of sprint and quarterly effort allocation across the SRE team." },
     ],
   }),
   component: Dashboard,
@@ -49,7 +49,7 @@ function Dashboard() {
     const s = i + 1;
     const rows = data.filter((d) => d.sprint === s);
     return {
-      sprint: `S${s}`,
+      sprint: `S${String(s).padStart(2, "0")}`,
       "Team Support": rows.reduce((x, r) => x + r.teamSupport, 0),
       Pillars: rows.reduce((x, r) => x + Object.values(r.pillars).reduce((a, b) => a + b, 0), 0),
       Initiatives: rows.reduce((x, r) => x + r.initiatives, 0),
@@ -66,8 +66,21 @@ function Dashboard() {
   const initiativeTarget = TEAM_CONFIG.initiativePointsPerQuarter * MEMBERS.length;
   const initiativeActual = data.reduce((s, a) => s + a.initiatives, 0);
 
+  const systemStatus: "ok" | "warn" | "danger" =
+    utilization > 110 ? "danger" : utilization > 95 ? "warn" : "ok";
+  const statusLabel = {
+    ok: "SYSTEMS NORMAL",
+    warn: "ELEVATED LOAD",
+    danger: "OVER CAPACITY",
+  }[systemStatus];
+  const statusColor = {
+    ok: "var(--accent)",
+    warn: "var(--warning)",
+    danger: "var(--destructive)",
+  }[systemStatus];
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground">
       <Header
         quarter={quarter}
         onQuarter={setQuarter}
@@ -75,30 +88,57 @@ function Dashboard() {
         onConnect={() => setJiraConnected(true)}
       />
 
-      <main className="mx-auto max-w-[1400px] px-6 py-8 space-y-8">
+      {/* status strip */}
+      <div className="border-b border-border bg-sidebar/60">
+        <div className="mx-auto max-w-[1400px] px-6 py-2 flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-2">
+              <span
+                className="h-1.5 w-1.5 rounded-full animate-pulse"
+                style={{ background: statusColor, boxShadow: `0 0 8px ${statusColor}` }}
+              />
+              <span style={{ color: statusColor }} className="font-semibold">{statusLabel}</span>
+            </span>
+            <span>NODE · sre-control</span>
+            <span>QTR · {quarter}</span>
+            <span>JIRA · {jiraConnected ? "linked" : "offline"}</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span>UPTIME 99.97%</span>
+            <span>SYNCED {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+          </div>
+        </div>
+      </div>
+
+      <main className="mx-auto max-w-[1400px] px-6 py-8 space-y-6">
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard
-            icon={<Users className="h-4 w-4" />}
+            code="HC.01"
+            icon={<Users className="h-3.5 w-3.5" />}
             label="Team Headcount"
             value={MEMBERS.length.toString()}
             sub={`${TEAM_CONFIG.leads} leads · ${TEAM_CONFIG.supportedTeams} teams supported`}
           />
           <KpiCard
-            icon={<Activity className="h-4 w-4" />}
+            code="UT.02"
+            icon={<Activity className="h-3.5 w-3.5" />}
             label="Quarter Utilization"
             value={`${utilization}%`}
             sub={`${quarterSpent} / ${quarterCapacity} SP`}
             tone={utilization > 100 ? "danger" : utilization > 90 ? "warn" : "ok"}
+            spark={sprintBreakdown.map((s) => s["Team Support"] + s.Pillars + s.Initiatives + s.Tools + s.EKS + s.Adhoc)}
           />
           <KpiCard
-            icon={<Target className="h-4 w-4" />}
-            label="Team Support Deviation"
+            code="DV.03"
+            icon={<Target className="h-3.5 w-3.5" />}
+            label="Support Deviation"
             value={`${teamSupportDeviation > 0 ? "+" : ""}${teamSupportDeviation} SP`}
             sub={`target ${teamSupportTarget} · actual ${teamSupportActual}`}
             tone={Math.abs(teamSupportDeviation) > teamSupportTarget * 0.1 ? "warn" : "ok"}
           />
           <KpiCard
-            icon={<TrendingUp className="h-4 w-4" />}
+            code="IN.04"
+            icon={<TrendingUp className="h-3.5 w-3.5" />}
             label="SRE Initiatives"
             value={`${initiativeActual} / ${initiativeTarget}`}
             sub="quarterly initiative points"
@@ -107,120 +147,148 @@ function Dashboard() {
         </section>
 
         <Tabs defaultValue="sprints" className="space-y-6">
-          <TabsList className="bg-card border border-border">
-            <TabsTrigger value="sprints">Sprint Breakdown</TabsTrigger>
-            <TabsTrigger value="pillars">Pillars</TabsTrigger>
-            <TabsTrigger value="leads">Leads & Teams</TabsTrigger>
-            <TabsTrigger value="members">Members</TabsTrigger>
-            <TabsTrigger value="ops">Tools & EKS</TabsTrigger>
+          <TabsList className="bg-sidebar border border-border p-1 rounded-sm h-auto w-full grid grid-cols-2 md:grid-cols-5 gap-1">
+            {[
+              ["sprints", "Sprint Breakdown"],
+              ["pillars", "Pillars"],
+              ["leads", "Leads & Teams"],
+              ["members", "Members"],
+              ["ops", "Tools & EKS"],
+            ].map(([v, l]) => (
+              <TabsTrigger
+                key={v}
+                value={v}
+                className="rounded-sm text-[11px] font-bold uppercase tracking-widest data-[state=active]:bg-card data-[state=active]:border data-[state=active]:border-border data-[state=active]:text-foreground text-muted-foreground py-2"
+              >
+                {l}
+              </TabsTrigger>
+            ))}
           </TabsList>
 
           <TabsContent value="sprints" className="space-y-6">
-            <Card title="Effort allocation across 6 sprints" subtitle="Stacked story points per category">
+            <Panel code="CHT.01" title="Effort allocation across 6 sprints" subtitle="Stacked story points per category">
+              <Legend2
+                items={[
+                  ["Team Support", "var(--chart-1)"],
+                  ["Pillars", "var(--chart-2)"],
+                  ["Initiatives", "var(--chart-3)"],
+                  ["Tools", "var(--chart-4)"],
+                  ["EKS", "var(--chart-5)"],
+                  ["Adhoc", "var(--destructive)"],
+                ]}
+              />
               <div className="h-[360px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={sprintBreakdown}>
-                    <CartesianGrid stroke="var(--border)" vertical={false} />
-                    <XAxis dataKey="sprint" stroke="var(--muted-foreground)" />
-                    <YAxis stroke="var(--muted-foreground)" />
-                    <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "var(--muted)" }} />
-                    <Legend wrapperStyle={{ color: "var(--muted-foreground)" }} />
+                  <BarChart data={sprintBreakdown} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                    <CartesianGrid stroke="var(--border)" vertical={false} strokeDasharray="2 4" />
+                    <XAxis dataKey="sprint" stroke="var(--muted-foreground)" tick={{ fontFamily: "var(--font-mono)", fontSize: 10 }} />
+                    <YAxis stroke="var(--muted-foreground)" tick={{ fontFamily: "var(--font-mono)", fontSize: 10 }} />
+                    <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "var(--muted)", opacity: 0.4 }} />
                     <Bar dataKey="Team Support" stackId="a" fill="var(--chart-1)" />
                     <Bar dataKey="Pillars" stackId="a" fill="var(--chart-2)" />
                     <Bar dataKey="Initiatives" stackId="a" fill="var(--chart-3)" />
                     <Bar dataKey="Tools" stackId="a" fill="var(--chart-4)" />
                     <Bar dataKey="EKS" stackId="a" fill="var(--chart-5)" />
-                    <Bar dataKey="Adhoc" stackId="a" fill="var(--accent)" />
+                    <Bar dataKey="Adhoc" stackId="a" fill="var(--destructive)" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </Card>
+            </Panel>
 
-            <Card title="Team support trend vs target" subtitle={`Target ${TEAM_CONFIG.pointsPerSprintPerMember} SP × ${MEMBERS.length} members per sprint`}>
-              <div className="h-[280px]">
+            <Panel code="CHT.02" title="Team support trend vs target" subtitle={`Target ${TEAM_CONFIG.pointsPerSprintPerMember} SP × ${MEMBERS.length} members per sprint`}>
+              <div className="h-[260px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={sprintBreakdown.map((s) => ({
-                    sprint: s.sprint,
-                    Actual: s["Team Support"],
-                    Target: TEAM_CONFIG.pointsPerSprintPerMember * MEMBERS.length,
-                  }))}>
-                    <CartesianGrid stroke="var(--border)" vertical={false} />
-                    <XAxis dataKey="sprint" stroke="var(--muted-foreground)" />
-                    <YAxis stroke="var(--muted-foreground)" />
+                  <LineChart
+                    data={sprintBreakdown.map((s) => ({
+                      sprint: s.sprint,
+                      Actual: s["Team Support"],
+                      Target: TEAM_CONFIG.pointsPerSprintPerMember * MEMBERS.length,
+                    }))}
+                    margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
+                  >
+                    <CartesianGrid stroke="var(--border)" vertical={false} strokeDasharray="2 4" />
+                    <XAxis dataKey="sprint" stroke="var(--muted-foreground)" tick={{ fontFamily: "var(--font-mono)", fontSize: 10 }} />
+                    <YAxis stroke="var(--muted-foreground)" tick={{ fontFamily: "var(--font-mono)", fontSize: 10 }} />
                     <Tooltip contentStyle={tooltipStyle} />
-                    <Legend wrapperStyle={{ color: "var(--muted-foreground)" }} />
-                    <Line type="monotone" dataKey="Actual" stroke="var(--chart-1)" strokeWidth={2.5} dot={{ r: 4 }} />
-                    <Line type="monotone" dataKey="Target" stroke="var(--chart-3)" strokeDasharray="5 5" strokeWidth={2} />
+                    <Legend wrapperStyle={{ color: "var(--muted-foreground)", fontSize: 11, fontFamily: "var(--font-mono)" }} />
+                    <Line type="monotone" dataKey="Actual" stroke="var(--chart-1)" strokeWidth={2.5} dot={{ r: 3, fill: "var(--chart-1)" }} />
+                    <Line type="monotone" dataKey="Target" stroke="var(--chart-2)" strokeDasharray="4 4" strokeWidth={2} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-            </Card>
+            </Panel>
           </TabsContent>
 
           <TabsContent value="pillars">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card title="Pillar effort distribution" subtitle="Total story points this quarter">
-                <div className="h-[360px]">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Panel code="PLR.01" title="Pillar effort distribution" subtitle="Total story points this quarter">
+                <div className="h-[340px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <RadarChart data={pillarTotals}>
                       <PolarGrid stroke="var(--border)" />
-                      <PolarAngleAxis dataKey="pillar" stroke="var(--muted-foreground)" />
-                      <PolarRadiusAxis stroke="var(--muted-foreground)" />
-                      <Radar name="Points" dataKey="points" stroke="var(--chart-2)" fill="var(--chart-2)" fillOpacity={0.45} />
+                      <PolarAngleAxis dataKey="pillar" stroke="var(--muted-foreground)" tick={{ fontFamily: "var(--font-mono)", fontSize: 11 }} />
+                      <PolarRadiusAxis stroke="var(--muted-foreground)" tick={{ fontFamily: "var(--font-mono)", fontSize: 9 }} />
+                      <Radar name="Points" dataKey="points" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.4} />
                       <Tooltip contentStyle={tooltipStyle} />
                     </RadarChart>
                   </ResponsiveContainer>
                 </div>
-              </Card>
-              <Card title="Pillar ownership" subtitle="1–2 SP / sprint per member commitment">
-                <div className="space-y-4 py-2">
+              </Panel>
+              <Panel code="PLR.02" title="Pillar ownership" subtitle="1–2 SP / sprint per member commitment">
+                <div className="space-y-4">
                   {pillarTotals.map((p) => {
                     const max = Math.max(...pillarTotals.map((x) => x.points));
                     const pct = (p.points / max) * 100;
-                    const icon = pillarIcon(p.pillar);
                     return (
-                      <div key={p.pillar} className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
+                      <div key={p.pillar} className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-2">
-                            <span className="text-primary">{icon}</span>
-                            <span className="font-medium">{p.pillar}</span>
+                            <span className="text-accent">{pillarIcon(p.pillar)}</span>
+                            <span className="font-medium uppercase tracking-wide">{p.pillar}</span>
                           </div>
-                          <span className="font-mono text-muted-foreground">{p.points} SP</span>
+                          <span className="font-mono text-muted-foreground">{p.points.toString().padStart(3, "0")} SP</span>
                         </div>
-                        <Progress value={pct} className="h-2" />
+                        <div className="h-1 bg-muted rounded-none overflow-hidden">
+                          <div className="h-full bg-accent" style={{ width: `${pct}%` }} />
+                        </div>
                       </div>
                     );
                   })}
                 </div>
-              </Card>
+              </Panel>
             </div>
           </TabsContent>
 
           <TabsContent value="leads">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {LEADS.map((lead) => {
+              {LEADS.map((lead, idx) => {
                 const members = MEMBERS.filter((m) => m.leadId === lead.id);
                 const points = data.filter((d) => members.some((m) => m.id === d.memberId))
                   .reduce((s, a) => s + totalForAllocation(a), 0);
                 const cap = members.length * SPRINT_CAPACITY_PER_MEMBER * 6;
                 const pct = Math.round((points / cap) * 100);
+                const tone = pct > 100 ? "var(--destructive)" : pct > 90 ? "var(--warning)" : "var(--accent)";
                 return (
-                  <div key={lead.id} className="rounded-lg border border-border bg-card p-5 space-y-4">
-                    <div className="flex items-start justify-between">
+                  <div key={lead.id} className="border border-border bg-card/40 rounded-sm">
+                    <div className="border-b border-border px-4 py-2 flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                      <span>LD.{String(idx + 1).padStart(2, "0")} · {lead.id}</span>
+                      <span style={{ color: tone }}>{pct}% util</span>
+                    </div>
+                    <div className="p-5 space-y-4">
                       <div>
-                        <div className="text-xs text-muted-foreground uppercase tracking-wider">Lead</div>
                         <div className="text-lg font-semibold">{lead.name}</div>
+                        <div className="text-xs text-muted-foreground">{members.length} members · {points}/{cap} SP</div>
                       </div>
-                      <Badge variant="outline" className="font-mono">{pct}% util</Badge>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {lead.teams.map((t) => (
-                        <Badge key={t} className="bg-secondary text-secondary-foreground">{t}</Badge>
-                      ))}
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-2">{members.length} members · {points}/{cap} SP</div>
-                      <Progress value={pct} className="h-2" />
+                      <div className="flex flex-wrap gap-1.5">
+                        {lead.teams.map((t) => (
+                          <Badge key={t} variant="outline" className="rounded-sm font-mono text-[10px] uppercase tracking-wider">
+                            {t}
+                          </Badge>
+                        ))}
+                      </div>
+                      <div className="h-1 bg-muted overflow-hidden">
+                        <div className="h-full" style={{ width: `${Math.min(pct, 100)}%`, background: tone }} />
+                      </div>
                     </div>
                   </div>
                 );
@@ -229,21 +297,21 @@ function Dashboard() {
           </TabsContent>
 
           <TabsContent value="members">
-            <Card title="Member-level allocation" subtitle="Quarter totals across all categories">
-              <div className="overflow-x-auto">
+            <Panel code="MBR.01" title="Member-level allocation" subtitle="Quarter totals across all categories">
+              <div className="overflow-x-auto -mx-5">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-muted-foreground border-b border-border">
-                      <th className="py-3 px-2 font-medium">Member</th>
-                      <th className="py-3 px-2 font-medium">Team</th>
-                      <th className="py-3 px-2 font-medium text-right">Support</th>
-                      <th className="py-3 px-2 font-medium text-right">Pillars</th>
-                      <th className="py-3 px-2 font-medium text-right">Init.</th>
-                      <th className="py-3 px-2 font-medium text-right">Tools</th>
-                      <th className="py-3 px-2 font-medium text-right">EKS</th>
-                      <th className="py-3 px-2 font-medium text-right">Adhoc</th>
-                      <th className="py-3 px-2 font-medium text-right">Total</th>
-                      <th className="py-3 px-2 font-medium">Capacity</th>
+                    <tr className="text-left text-[10px] uppercase tracking-widest text-muted-foreground border-y border-border bg-sidebar/40">
+                      <th className="py-2 px-5 font-medium">Member</th>
+                      <th className="py-2 px-2 font-medium">Team</th>
+                      <th className="py-2 px-2 font-medium text-right">Support</th>
+                      <th className="py-2 px-2 font-medium text-right">Pillars</th>
+                      <th className="py-2 px-2 font-medium text-right">Init.</th>
+                      <th className="py-2 px-2 font-medium text-right">Tools</th>
+                      <th className="py-2 px-2 font-medium text-right">EKS</th>
+                      <th className="py-2 px-2 font-medium text-right">Adhoc</th>
+                      <th className="py-2 px-2 font-medium text-right">Total</th>
+                      <th className="py-2 px-5 font-medium">Capacity</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -258,31 +326,34 @@ function Dashboard() {
                       const total = support + pillars + init + tools + eks + adhoc;
                       const cap = SPRINT_CAPACITY_PER_MEMBER * 6;
                       const pct = Math.round((total / cap) * 100);
+                      const tone = pct > 100 ? "var(--destructive)" : pct > 90 ? "var(--warning)" : "var(--accent)";
                       return (
-                        <tr key={m.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                          <td className="py-3 px-2">
-                            <div className="flex items-center gap-2">
-                              <div className="h-7 w-7 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-[10px] font-semibold text-primary-foreground">
+                        <tr key={m.id} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
+                          <td className="py-2.5 px-5">
+                            <div className="flex items-center gap-2.5">
+                              <div className="h-7 w-7 rounded-sm border border-border bg-sidebar flex items-center justify-center text-[10px] font-mono font-semibold text-accent">
                                 {m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
                               </div>
                               <div>
                                 <div className="font-medium">{m.name}</div>
-                                <div className="text-xs text-muted-foreground">{m.role}</div>
+                                <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{m.role}</div>
                               </div>
                             </div>
                           </td>
-                          <td className="py-3 px-2 text-muted-foreground">{m.primaryTeam}</td>
-                          <td className="py-3 px-2 text-right font-mono">{support}</td>
-                          <td className="py-3 px-2 text-right font-mono">{pillars}</td>
-                          <td className="py-3 px-2 text-right font-mono">{init}</td>
-                          <td className="py-3 px-2 text-right font-mono">{tools}</td>
-                          <td className="py-3 px-2 text-right font-mono">{eks}</td>
-                          <td className="py-3 px-2 text-right font-mono">{adhoc}</td>
-                          <td className="py-3 px-2 text-right font-mono font-semibold">{total}</td>
-                          <td className="py-3 px-2 w-32">
+                          <td className="py-2.5 px-2 text-muted-foreground text-xs">{m.primaryTeam}</td>
+                          <td className="py-2.5 px-2 text-right font-mono">{support}</td>
+                          <td className="py-2.5 px-2 text-right font-mono">{pillars}</td>
+                          <td className="py-2.5 px-2 text-right font-mono">{init}</td>
+                          <td className="py-2.5 px-2 text-right font-mono">{tools}</td>
+                          <td className="py-2.5 px-2 text-right font-mono">{eks}</td>
+                          <td className="py-2.5 px-2 text-right font-mono">{adhoc}</td>
+                          <td className="py-2.5 px-2 text-right font-mono font-semibold">{total}</td>
+                          <td className="py-2.5 px-5 w-36">
                             <div className="flex items-center gap-2">
-                              <Progress value={Math.min(pct, 100)} className="h-1.5" />
-                              <span className={`text-xs font-mono w-9 text-right ${pct > 100 ? "text-destructive" : "text-muted-foreground"}`}>{pct}%</span>
+                              <div className="flex-1 h-1 bg-muted overflow-hidden">
+                                <div className="h-full" style={{ width: `${Math.min(pct, 100)}%`, background: tone }} />
+                              </div>
+                              <span className="text-[10px] font-mono w-10 text-right" style={{ color: tone }}>{pct}%</span>
                             </div>
                           </td>
                         </tr>
@@ -291,43 +362,31 @@ function Dashboard() {
                   </tbody>
                 </table>
               </div>
-            </Card>
+            </Panel>
           </TabsContent>
 
           <TabsContent value="ops">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card title="Tools ownership" subtitle="10 tools recently transitioned to SRE">
-                <div className="grid grid-cols-2 gap-2">
-                  {TOOLS.map((t) => (
-                    <div key={t} className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
-                      <Wrench className="h-3.5 w-3.5 text-primary" />
-                      <span className="text-sm">{t}</span>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Panel code="OPS.01" title="Tools ownership" subtitle="10 tools recently transitioned to SRE">
+                <div className="grid grid-cols-2 gap-1.5">
+                  {TOOLS.map((t, i) => (
+                    <div key={t} className="flex items-center justify-between border border-border bg-sidebar/40 px-3 py-2 rounded-sm">
+                      <div className="flex items-center gap-2">
+                        <Wrench className="h-3 w-3 text-accent" />
+                        <span className="text-xs">{t}</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-muted-foreground">T.{String(i + 1).padStart(2, "0")}</span>
                     </div>
                   ))}
                 </div>
-              </Card>
-              <Card title="EKS administration" subtitle="Sustained admin effort across clusters">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Quarter EKS effort</span>
-                    <span className="text-2xl font-semibold font-mono">
-                      {data.reduce((s, a) => s + a.eksAdmin, 0)} SP
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Tools support effort</span>
-                    <span className="text-2xl font-semibold font-mono">
-                      {data.reduce((s, a) => s + a.toolsSupport, 0)} SP
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Adhoc / unplanned</span>
-                    <span className="text-2xl font-semibold font-mono text-warning" style={{ color: "var(--warning)" }}>
-                      {data.reduce((s, a) => s + a.adhoc, 0)} SP
-                    </span>
-                  </div>
+              </Panel>
+              <Panel code="OPS.02" title="EKS administration" subtitle="Sustained admin effort across clusters">
+                <div className="space-y-3">
+                  <OpsRow icon={<Box className="h-3.5 w-3.5" />} label="Quarter EKS effort" value={data.reduce((s, a) => s + a.eksAdmin, 0)} />
+                  <OpsRow icon={<Wrench className="h-3.5 w-3.5" />} label="Tools support effort" value={data.reduce((s, a) => s + a.toolsSupport, 0)} />
+                  <OpsRow icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Adhoc / unplanned" value={data.reduce((s, a) => s + a.adhoc, 0)} tone="warn" />
                 </div>
-              </Card>
+              </Panel>
             </div>
           </TabsContent>
         </Tabs>
@@ -346,24 +405,26 @@ function Header({
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="border-b border-border bg-sidebar/80 backdrop-blur sticky top-0 z-10">
+    <header className="border-b border-border bg-sidebar/90 backdrop-blur sticky top-0 z-10">
       <div className="mx-auto max-w-[1400px] px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-md bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-            <Layers className="h-5 w-5 text-primary-foreground" />
+          <div className="h-9 w-9 rounded-sm border border-primary/40 bg-primary/15 flex items-center justify-center">
+            <Cpu className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold tracking-tight">SRE Capacity Tracker</h1>
-            <p className="text-xs text-muted-foreground">Sprint & quarterly effort allocation</p>
+            <h1 className="text-base font-bold tracking-tight">SRE Capacity Tracker</h1>
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+              Operational velocity · resource allocation
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-md border border-border bg-card p-0.5">
+          <div className="flex rounded-sm border border-border bg-card/60 p-0.5">
             {QUARTERS.map((q) => (
               <button
                 key={q}
                 onClick={() => onQuarter(q)}
-                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                className={`px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[2px] transition-colors ${
                   q === quarter ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -371,14 +432,21 @@ function Header({
               </button>
             ))}
           </div>
-          <Button variant="outline" size="sm">
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Sync
+          <Button variant="outline" size="sm" className="rounded-sm font-mono text-[11px] uppercase tracking-widest">
+            <RefreshCw className="h-3 w-3 mr-1.5" /> Sync
           </Button>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" variant={jiraConnected ? "secondary" : "default"}>
-                <KeyRound className="h-3.5 w-3.5 mr-1.5" />
-                {jiraConnected ? "Jira Connected" : "Connect Jira"}
+              <Button
+                size="sm"
+                className={`rounded-sm font-mono text-[11px] uppercase tracking-widest ${
+                  jiraConnected
+                    ? "bg-accent/15 text-accent border border-accent/40 hover:bg-accent/25"
+                    : "bg-accent text-accent-foreground hover:bg-accent/90"
+                }`}
+              >
+                <KeyRound className="h-3 w-3 mr-1.5" />
+                {jiraConnected ? "Jira Linked" : "Connect Jira"}
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -401,10 +469,7 @@ function Header({
                   <Label htmlFor="jira-token">Personal Access Token</Label>
                   <Input id="jira-token" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="ATATT3xFfGF0..." />
                 </div>
-                <Button
-                  className="w-full"
-                  onClick={() => { onConnect(); setOpen(false); }}
-                >
+                <Button className="w-full" onClick={() => { onConnect(); setOpen(false); }}>
                   Save & sync
                 </Button>
                 <p className="text-xs text-muted-foreground">
@@ -420,38 +485,91 @@ function Header({
 }
 
 function KpiCard({
-  icon, label, value, sub, tone = "neutral",
+  code, icon, label, value, sub, tone = "neutral", spark,
 }: {
+  code: string;
   icon: React.ReactNode; label: string; value: string; sub: string;
   tone?: "neutral" | "ok" | "warn" | "danger";
+  spark?: number[];
 }) {
-  const toneClass = {
-    neutral: "text-foreground",
-    ok: "text-primary",
-    warn: "",
-    danger: "text-destructive",
-  }[tone];
-  const style = tone === "warn" ? { color: "var(--warning)" } : undefined;
+  const color =
+    tone === "danger" ? "var(--destructive)" :
+    tone === "warn" ? "var(--warning)" :
+    tone === "ok" ? "var(--accent)" :
+    "var(--foreground)";
+
   return (
-    <div className="rounded-lg border border-border bg-card p-5 hover:border-primary/40 transition-colors">
-      <div className="flex items-center justify-between text-muted-foreground">
-        <span className="text-xs uppercase tracking-wider">{label}</span>
+    <div className="border border-border bg-card/40 rounded-sm overflow-hidden group hover:border-primary/40 transition-colors">
+      <div className="px-4 py-2 border-b border-border bg-sidebar/40 flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+        <span>{code} · {label}</span>
         {icon}
       </div>
-      <div className={`mt-3 text-3xl font-semibold font-mono ${toneClass}`} style={style}>{value}</div>
-      <div className="mt-1 text-xs text-muted-foreground">{sub}</div>
+      <div className="p-4 relative">
+        <div className="text-3xl font-mono font-semibold tracking-tight" style={{ color }}>
+          {value}
+        </div>
+        <div className="mt-1 text-[11px] text-muted-foreground">{sub}</div>
+        {spark && spark.length > 0 && (
+          <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="absolute right-3 top-3 h-8 w-20 opacity-70">
+            <polyline
+              fill="none"
+              stroke={color}
+              strokeWidth="1.5"
+              points={spark.map((v, i) => {
+                const max = Math.max(...spark);
+                const min = Math.min(...spark);
+                const x = (i / (spark.length - 1)) * 100;
+                const y = 28 - ((v - min) / Math.max(1, max - min)) * 24;
+                return `${x},${y}`;
+              }).join(" ")}
+            />
+          </svg>
+        )}
+      </div>
     </div>
   );
 }
 
-function Card({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function Panel({ code, title, subtitle, children }: { code: string; title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-5">
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold">{title}</h3>
-        {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+    <div className="border border-border bg-card/40 rounded-sm">
+      <div className="border-b border-border px-5 py-2.5 flex items-center justify-between">
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{code}</div>
+          <h3 className="text-sm font-semibold mt-0.5">{title}</h3>
+          {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>}
+        </div>
+        <Radio className="h-3 w-3 text-accent animate-pulse" />
       </div>
-      {children}
+      <div className="p-5">{children}</div>
+    </div>
+  );
+}
+
+function Legend2({ items }: { items: [string, string][] }) {
+  return (
+    <div className="flex flex-wrap gap-x-5 gap-y-1.5 mb-4">
+      {items.map(([label, color]) => (
+        <div key={label} className="flex items-center gap-2">
+          <span className="h-2 w-2" style={{ background: color }} />
+          <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OpsRow({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: number; tone?: "warn" }) {
+  const color = tone === "warn" ? "var(--warning)" : "var(--foreground)";
+  return (
+    <div className="flex items-center justify-between border border-border bg-sidebar/40 px-4 py-3 rounded-sm">
+      <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
+        <span className="text-accent">{icon}</span>
+        <span className="uppercase tracking-wider">{label}</span>
+      </div>
+      <span className="text-2xl font-mono font-semibold" style={{ color }}>
+        {value}<span className="text-[10px] text-muted-foreground ml-1">SP</span>
+      </span>
     </div>
   );
 }
@@ -464,13 +582,14 @@ function pillarIcon(p: string) {
     AI: <Database className="h-3.5 w-3.5" />,
     Observability: <AlertTriangle className="h-3.5 w-3.5" />,
   };
-  return map[p] ?? <Layers className="h-3.5 w-3.5" />;
+  return map[p] ?? <Cpu className="h-3.5 w-3.5" />;
 }
 
 const tooltipStyle = {
   background: "var(--popover)",
   border: "1px solid var(--border)",
-  borderRadius: "8px",
+  borderRadius: "2px",
   color: "var(--popover-foreground)",
-  fontSize: "12px",
+  fontSize: "11px",
+  fontFamily: "var(--font-mono)",
 };
