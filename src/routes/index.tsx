@@ -2,16 +2,18 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
   Activity, Users, Target, AlertTriangle, TrendingUp, Wrench,
-  Shield, Database, KeyRound, RefreshCw, Box, Cpu, Radio,
+  Shield, Database, KeyRound, RefreshCw, Box, Cpu, BarChart3,
+  ChevronDown, Layers, Zap, Sparkles, Server
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend,
-  LineChart, Line,
+  LineChart, Line, AreaChart, Area,
 } from "recharts";
 import {
   LEADS, MEMBERS, PILLARS, TOOLS, QUARTERS, SPRINT_CAPACITY_PER_MEMBER,
   TEAM_CONFIG, generateQuarterData, totalForAllocation,
+  type Pillar,
 } from "@/lib/sre-data";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,11 +27,21 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "SRE Capacity Tracker" },
-      { name: "description", content: "Mission-control view of sprint and quarterly effort allocation across the SRE team." },
+      { name: "description", content: "Track sprint and quarterly effort allocation across your SRE team." },
     ],
   }),
   component: Dashboard,
 });
+
+/* ─── helpers ─── */
+
+function toHex(oklchStr: string): string {
+  // quick approximation from oklch — not exact but good enough for inline SVGs
+  // we return the raw string for CSS vars which recharts handles fine
+  return oklchStr;
+}
+
+/* ─── page ─── */
 
 function Dashboard() {
   const [quarter, setQuarter] = useState(QUARTERS[1]);
@@ -66,21 +78,8 @@ function Dashboard() {
   const initiativeTarget = TEAM_CONFIG.initiativePointsPerQuarter * MEMBERS.length;
   const initiativeActual = data.reduce((s, a) => s + a.initiatives, 0);
 
-  const systemStatus: "ok" | "warn" | "danger" =
-    utilization > 110 ? "danger" : utilization > 95 ? "warn" : "ok";
-  const statusLabel = {
-    ok: "SYSTEMS NORMAL",
-    warn: "ELEVATED LOAD",
-    danger: "OVER CAPACITY",
-  }[systemStatus];
-  const statusColor = {
-    ok: "var(--accent)",
-    warn: "var(--warning)",
-    danger: "var(--destructive)",
-  }[systemStatus];
-
   return (
-    <div className="min-h-screen text-foreground">
+    <div className="min-h-screen bg-background text-foreground">
       <Header
         quarter={quarter}
         onQuarter={setQuarter}
@@ -88,85 +87,48 @@ function Dashboard() {
         onConnect={() => setJiraConnected(true)}
       />
 
-      {/* status strip */}
-      <div className="border-b border-border bg-sidebar/60">
-        <div className="mx-auto max-w-[1400px] px-6 py-2 flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-2">
-              <span
-                className="h-1.5 w-1.5 rounded-full animate-pulse"
-                style={{ background: statusColor, boxShadow: `0 0 8px ${statusColor}` }}
-              />
-              <span style={{ color: statusColor }} className="font-semibold">{statusLabel}</span>
-            </span>
-            <span>NODE · sre-control</span>
-            <span>QTR · {quarter}</span>
-            <span>JIRA · {jiraConnected ? "linked" : "offline"}</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <span>UPTIME 99.97%</span>
-            <span>SYNCED {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-          </div>
-        </div>
-      </div>
-
-      <main className="mx-auto max-w-[1400px] px-6 py-8 space-y-6">
-        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <main className="mx-auto max-w-[1400px] px-6 py-8 space-y-8">
+        {/* KPI cards */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           <KpiCard
-            code="HC.01"
-            icon={<Users className="h-3.5 w-3.5" />}
-            label="Team Headcount"
+            icon={<Users className="h-5 w-5" />}
+            label="Team Size"
             value={MEMBERS.length.toString()}
-            sub={`${TEAM_CONFIG.leads} leads · ${TEAM_CONFIG.supportedTeams} teams supported`}
+            sub={`${TEAM_CONFIG.leads} leads · ${TEAM_CONFIG.supportedTeams} teams`}
+            tone="neutral"
           />
           <KpiCard
-            code="UT.02"
-            icon={<Activity className="h-3.5 w-3.5" />}
-            label="Quarter Utilization"
+            icon={<Activity className="h-5 w-5" />}
+            label="Utilization"
             value={`${utilization}%`}
             sub={`${quarterSpent} / ${quarterCapacity} SP`}
             tone={utilization > 100 ? "danger" : utilization > 90 ? "warn" : "ok"}
-            spark={sprintBreakdown.map((s) => s["Team Support"] + s.Pillars + s.Initiatives + s.Tools + s.EKS + s.Adhoc)}
           />
           <KpiCard
-            code="DV.03"
-            icon={<Target className="h-3.5 w-3.5" />}
+            icon={<Target className="h-5 w-5" />}
             label="Support Deviation"
             value={`${teamSupportDeviation > 0 ? "+" : ""}${teamSupportDeviation} SP`}
             sub={`target ${teamSupportTarget} · actual ${teamSupportActual}`}
             tone={Math.abs(teamSupportDeviation) > teamSupportTarget * 0.1 ? "warn" : "ok"}
           />
           <KpiCard
-            code="IN.04"
-            icon={<TrendingUp className="h-3.5 w-3.5" />}
-            label="SRE Initiatives"
+            icon={<TrendingUp className="h-5 w-5" />}
+            label="Initiatives"
             value={`${initiativeActual} / ${initiativeTarget}`}
             sub="quarterly initiative points"
             tone={initiativeActual < initiativeTarget * 0.8 ? "warn" : "ok"}
           />
         </section>
 
-        <Tabs defaultValue="sprints" className="space-y-6">
-          <TabsList className="bg-sidebar border border-border p-1 rounded-sm h-auto w-full grid grid-cols-2 md:grid-cols-5 gap-1">
-            {[
-              ["sprints", "Sprint Breakdown"],
-              ["pillars", "Pillars"],
-              ["leads", "Leads & Teams"],
-              ["members", "Members"],
-              ["ops", "Tools & EKS"],
-            ].map(([v, l]) => (
-              <TabsTrigger
-                key={v}
-                value={v}
-                className="rounded-sm text-[11px] font-bold uppercase tracking-widest data-[state=active]:bg-card data-[state=active]:border data-[state=active]:border-border data-[state=active]:text-foreground text-muted-foreground py-2"
-              >
-                {l}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          <TabsContent value="sprints" className="space-y-6">
-            <Panel code="CHT.01" title="Effort allocation across 6 sprints" subtitle="Stacked story points per category">
+        {/* Charts */}
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2">
+            <CardHeader
+              icon={<BarChart3 className="h-4 w-4" />}
+              title="Sprint Effort Allocation"
+              subtitle="Story points by category across 6 sprints"
+            />
+            <div className="px-5 pb-5">
               <Legend2
                 items={[
                   ["Team Support", "var(--chart-1)"],
@@ -177,141 +139,213 @@ function Dashboard() {
                   ["Adhoc", "var(--destructive)"],
                 ]}
               />
-              <div className="h-[360px]">
+              <div className="h-[320px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={sprintBreakdown} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                    <CartesianGrid stroke="var(--border)" vertical={false} strokeDasharray="2 4" />
-                    <XAxis dataKey="sprint" stroke="var(--muted-foreground)" tick={{ fontFamily: "var(--font-mono)", fontSize: 10 }} />
-                    <YAxis stroke="var(--muted-foreground)" tick={{ fontFamily: "var(--font-mono)", fontSize: 10 }} />
-                    <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "var(--muted)", opacity: 0.4 }} />
-                    <Bar dataKey="Team Support" stackId="a" fill="var(--chart-1)" />
-                    <Bar dataKey="Pillars" stackId="a" fill="var(--chart-2)" />
-                    <Bar dataKey="Initiatives" stackId="a" fill="var(--chart-3)" />
-                    <Bar dataKey="Tools" stackId="a" fill="var(--chart-4)" />
-                    <Bar dataKey="EKS" stackId="a" fill="var(--chart-5)" />
-                    <Bar dataKey="Adhoc" stackId="a" fill="var(--destructive)" />
+                  <BarChart data={sprintBreakdown} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
+                    <CartesianGrid stroke="var(--border)" vertical={false} strokeDasharray="4 4" />
+                    <XAxis dataKey="sprint" stroke="var(--muted-foreground)" tick={{ fontSize: 12 }} />
+                    <YAxis stroke="var(--muted-foreground)" tick={{ fontSize: 12 }} />
+                    <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "var(--muted)", opacity: 0.3 }} />
+                    <Bar dataKey="Team Support" stackId="a" fill="var(--chart-1)" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="Pillars" stackId="a" fill="var(--chart-2)" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="Initiatives" stackId="a" fill="var(--chart-3)" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="Tools" stackId="a" fill="var(--chart-4)" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="EKS" stackId="a" fill="var(--chart-5)" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="Adhoc" stackId="a" fill="var(--destructive)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </Panel>
+            </div>
+          </Card>
 
-            <Panel code="CHT.02" title="Team support trend vs target" subtitle={`Target ${TEAM_CONFIG.pointsPerSprintPerMember} SP × ${MEMBERS.length} members per sprint`}>
-              <div className="h-[260px]">
+          <Card>
+            <CardHeader
+              icon={<Layers className="h-4 w-4" />}
+              title="Pillar Distribution"
+              subtitle="Effort across internal pillars"
+            />
+            <div className="px-5 pb-5">
+              <div className="h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={sprintBreakdown.map((s) => ({
-                      sprint: s.sprint,
-                      Actual: s["Team Support"],
-                      Target: TEAM_CONFIG.pointsPerSprintPerMember * MEMBERS.length,
-                    }))}
-                    margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
-                  >
-                    <CartesianGrid stroke="var(--border)" vertical={false} strokeDasharray="2 4" />
-                    <XAxis dataKey="sprint" stroke="var(--muted-foreground)" tick={{ fontFamily: "var(--font-mono)", fontSize: 10 }} />
-                    <YAxis stroke="var(--muted-foreground)" tick={{ fontFamily: "var(--font-mono)", fontSize: 10 }} />
+                  <RadarChart data={pillarTotals}>
+                    <PolarGrid stroke="var(--border)" />
+                    <PolarAngleAxis dataKey="pillar" stroke="var(--muted-foreground)" tick={{ fontSize: 11, fontWeight: 500 }} />
+                    <PolarRadiusAxis stroke="var(--muted-foreground)" tick={{ fontSize: 10 }} />
+                    <Radar name="Points" dataKey="points" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.25} />
                     <Tooltip contentStyle={tooltipStyle} />
-                    <Legend wrapperStyle={{ color: "var(--muted-foreground)", fontSize: 11, fontFamily: "var(--font-mono)" }} />
-                    <Line type="monotone" dataKey="Actual" stroke="var(--chart-1)" strokeWidth={2.5} dot={{ r: 3, fill: "var(--chart-1)" }} />
-                    <Line type="monotone" dataKey="Target" stroke="var(--chart-2)" strokeDasharray="4 4" strokeWidth={2} dot={false} />
-                  </LineChart>
+                  </RadarChart>
                 </ResponsiveContainer>
               </div>
-            </Panel>
-          </TabsContent>
-
-          <TabsContent value="pillars">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Panel code="PLR.01" title="Pillar effort distribution" subtitle="Total story points this quarter">
-                <div className="h-[340px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart data={pillarTotals}>
-                      <PolarGrid stroke="var(--border)" />
-                      <PolarAngleAxis dataKey="pillar" stroke="var(--muted-foreground)" tick={{ fontFamily: "var(--font-mono)", fontSize: 11 }} />
-                      <PolarRadiusAxis stroke="var(--muted-foreground)" tick={{ fontFamily: "var(--font-mono)", fontSize: 9 }} />
-                      <Radar name="Points" dataKey="points" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.4} />
-                      <Tooltip contentStyle={tooltipStyle} />
-                    </RadarChart>
-                  </ResponsiveContainer>
-                </div>
-              </Panel>
-              <Panel code="PLR.02" title="Pillar ownership" subtitle="1–2 SP / sprint per member commitment">
-                <div className="space-y-4">
-                  {pillarTotals.map((p) => {
-                    const max = Math.max(...pillarTotals.map((x) => x.points));
-                    const pct = (p.points / max) * 100;
-                    return (
-                      <div key={p.pillar} className="space-y-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="text-accent">{pillarIcon(p.pillar)}</span>
-                            <span className="font-medium uppercase tracking-wide">{p.pillar}</span>
-                          </div>
-                          <span className="font-mono text-muted-foreground">{p.points.toString().padStart(3, "0")} SP</span>
+              <div className="mt-4 space-y-3">
+                {pillarTotals.map((p) => {
+                  const max = Math.max(...pillarTotals.map((x) => x.points));
+                  const pct = (p.points / max) * 100;
+                  return (
+                    <div key={p.pillar} className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[var(--chart-2)]">{pillarIcon(p.pillar)}</span>
+                          <span className="font-medium">{p.pillar}</span>
                         </div>
-                        <div className="h-1 bg-muted rounded-none overflow-hidden">
-                          <div className="h-full bg-accent" style={{ width: `${pct}%` }} />
-                        </div>
+                        <span className="text-muted-foreground text-xs">{p.points} SP</span>
                       </div>
-                    );
-                  })}
-                </div>
-              </Panel>
+                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-[var(--chart-2)]" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </TabsContent>
+          </Card>
+        </section>
 
-          <TabsContent value="leads">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Trend line */}
+        <Card>
+          <CardHeader
+            icon={<TrendingUp className="h-4 w-4" />}
+            title="Team Support Trend"
+            subtitle={`Target: ${TEAM_CONFIG.pointsPerSprintPerMember} SP × ${MEMBERS.length} members per sprint`}
+          />
+          <div className="px-5 pb-5">
+            <div className="h-[240px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={sprintBreakdown.map((s) => ({
+                    sprint: s.sprint,
+                    Actual: s["Team Support"],
+                    Target: TEAM_CONFIG.pointsPerSprintPerMember * MEMBERS.length,
+                  }))}
+                  margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="actualFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="var(--border)" vertical={false} strokeDasharray="4 4" />
+                  <XAxis dataKey="sprint" stroke="var(--muted-foreground)" tick={{ fontSize: 12 }} />
+                  <YAxis stroke="var(--muted-foreground)" tick={{ fontSize: 12 }} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Legend wrapperStyle={{ fontSize: 12, color: "var(--muted-foreground)" }} />
+                  <Area type="monotone" dataKey="Actual" stroke="var(--chart-1)" strokeWidth={2.5} fill="url(#actualFill)" dot={{ r: 4, fill: "var(--chart-1)", strokeWidth: 2, stroke: "var(--card)" }} />
+                  <Line type="monotone" dataKey="Target" stroke="var(--chart-3)" strokeDasharray="6 4" strokeWidth={2} dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </Card>
+
+        {/* Tabs: Leads, Members, Tools */}
+        <Tabs defaultValue="leads" className="space-y-6">
+          <TabsList className="bg-card border border-border p-1.5 rounded-xl h-auto w-full grid grid-cols-3 gap-1.5">
+            {[
+              ["leads", "Leads & Teams", Users],
+              ["members", "Members", Server],
+              ["ops", "Tools & EKS", Wrench],
+            ].map(([v, l, Icon]) => (
+              <TabsTrigger
+                key={v}
+                value={v}
+                className="rounded-lg text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm text-muted-foreground py-2.5 transition-all flex items-center justify-center gap-2"
+              >
+                <Icon className="h-4 w-4" /> {l}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          <TabsContent value="leads" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {LEADS.map((lead, idx) => {
                 const members = MEMBERS.filter((m) => m.leadId === lead.id);
-                const points = data.filter((d) => members.some((m) => m.id === d.memberId))
+                const points = data
+                  .filter((d) => members.some((m) => m.id === d.memberId))
                   .reduce((s, a) => s + totalForAllocation(a), 0);
                 const cap = members.length * SPRINT_CAPACITY_PER_MEMBER * 6;
                 const pct = Math.round((points / cap) * 100);
-                const tone = pct > 100 ? "var(--destructive)" : pct > 90 ? "var(--warning)" : "var(--accent)";
                 return (
-                  <div key={lead.id} className="border border-border bg-card/40 rounded-sm">
-                    <div className="border-b border-border px-4 py-2 flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-                      <span>LD.{String(idx + 1).padStart(2, "0")} · {lead.id}</span>
-                      <span style={{ color: tone }}>{pct}% util</span>
-                    </div>
-                    <div className="p-5 space-y-4">
-                      <div>
-                        <div className="text-lg font-semibold">{lead.name}</div>
-                        <div className="text-xs text-muted-foreground">{members.length} members · {points}/{cap} SP</div>
+                  <Card key={lead.id}>
+                    <div className="p-6 space-y-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-xl bg-[var(--chart-1)]/10 flex items-center justify-center text-[var(--chart-1)]">
+                            <Users className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-base">{lead.name}</h3>
+                            <p className="text-xs text-muted-foreground">{members.length} members · Lead {idx + 1}</p>
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="rounded-lg font-medium">
+                          {pct}% utilized
+                        </Badge>
                       </div>
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-2">
                         {lead.teams.map((t) => (
-                          <Badge key={t} variant="outline" className="rounded-sm font-mono text-[10px] uppercase tracking-wider">
+                          <Badge key={t} variant="secondary" className="rounded-lg font-medium text-xs bg-[var(--secondary)]/60">
                             {t}
                           </Badge>
                         ))}
                       </div>
-                      <div className="h-1 bg-muted overflow-hidden">
-                        <div className="h-full" style={{ width: `${Math.min(pct, 100)}%`, background: tone }} />
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Capacity used</span>
+                          <span className="font-medium">{points} / {cap} SP</span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${Math.min(pct, 100)}%`,
+                              background: pct > 100 ? "var(--destructive)" : pct > 90 ? "var(--chart-3)" : "var(--chart-2)",
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 pt-2">
+                        {members.slice(0, 4).map((m) => (
+                          <div key={m.id} className="flex items-center gap-2 text-xs">
+                            <div className="h-6 w-6 rounded-lg bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground">
+                              {m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                            </div>
+                            <span className="text-muted-foreground truncate">{m.name}</span>
+                          </div>
+                        ))}
+                        {members.length > 4 && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            +{members.length - 4} more
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
+                  </Card>
                 );
               })}
             </div>
           </TabsContent>
 
           <TabsContent value="members">
-            <Panel code="MBR.01" title="Member-level allocation" subtitle="Quarter totals across all categories">
-              <div className="overflow-x-auto -mx-5">
+            <Card>
+              <CardHeader
+                icon={<Server className="h-4 w-4" />}
+                title="Member Allocations"
+                subtitle="Quarter totals across all categories"
+              />
+              <div className="px-5 pb-5 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-[10px] uppercase tracking-widest text-muted-foreground border-y border-border bg-sidebar/40">
-                      <th className="py-2 px-5 font-medium">Member</th>
-                      <th className="py-2 px-2 font-medium">Team</th>
-                      <th className="py-2 px-2 font-medium text-right">Support</th>
-                      <th className="py-2 px-2 font-medium text-right">Pillars</th>
-                      <th className="py-2 px-2 font-medium text-right">Init.</th>
-                      <th className="py-2 px-2 font-medium text-right">Tools</th>
-                      <th className="py-2 px-2 font-medium text-right">EKS</th>
-                      <th className="py-2 px-2 font-medium text-right">Adhoc</th>
-                      <th className="py-2 px-2 font-medium text-right">Total</th>
-                      <th className="py-2 px-5 font-medium">Capacity</th>
+                    <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border">
+                      <th className="py-3 px-4 font-medium">Member</th>
+                      <th className="py-3 px-3 font-medium">Team</th>
+                      <th className="py-3 px-3 font-medium text-right">Support</th>
+                      <th className="py-3 px-3 font-medium text-right">Pillars</th>
+                      <th className="py-3 px-3 font-medium text-right">Init.</th>
+                      <th className="py-3 px-3 font-medium text-right">Tools</th>
+                      <th className="py-3 px-3 font-medium text-right">EKS</th>
+                      <th className="py-3 px-3 font-medium text-right">Adhoc</th>
+                      <th className="py-3 px-3 font-medium text-right">Total</th>
+                      <th className="py-3 px-4 font-medium w-36">Utilization</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -326,34 +360,34 @@ function Dashboard() {
                       const total = support + pillars + init + tools + eks + adhoc;
                       const cap = SPRINT_CAPACITY_PER_MEMBER * 6;
                       const pct = Math.round((total / cap) * 100);
-                      const tone = pct > 100 ? "var(--destructive)" : pct > 90 ? "var(--warning)" : "var(--accent)";
+                      const barColor = pct > 100 ? "var(--destructive)" : pct > 90 ? "var(--chart-3)" : "var(--chart-2)";
                       return (
-                        <tr key={m.id} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
-                          <td className="py-2.5 px-5">
-                            <div className="flex items-center gap-2.5">
-                              <div className="h-7 w-7 rounded-sm border border-border bg-sidebar flex items-center justify-center text-[10px] font-mono font-semibold text-accent">
+                        <tr key={m.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className="h-8 w-8 rounded-xl bg-[var(--chart-1)]/10 flex items-center justify-center text-xs font-bold text-[var(--chart-1)]">
                                 {m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
                               </div>
                               <div>
                                 <div className="font-medium">{m.name}</div>
-                                <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{m.role}</div>
+                                <div className="text-[11px] text-muted-foreground">{m.role}</div>
                               </div>
                             </div>
                           </td>
-                          <td className="py-2.5 px-2 text-muted-foreground text-xs">{m.primaryTeam}</td>
-                          <td className="py-2.5 px-2 text-right font-mono">{support}</td>
-                          <td className="py-2.5 px-2 text-right font-mono">{pillars}</td>
-                          <td className="py-2.5 px-2 text-right font-mono">{init}</td>
-                          <td className="py-2.5 px-2 text-right font-mono">{tools}</td>
-                          <td className="py-2.5 px-2 text-right font-mono">{eks}</td>
-                          <td className="py-2.5 px-2 text-right font-mono">{adhoc}</td>
-                          <td className="py-2.5 px-2 text-right font-mono font-semibold">{total}</td>
-                          <td className="py-2.5 px-5 w-36">
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 h-1 bg-muted overflow-hidden">
-                                <div className="h-full" style={{ width: `${Math.min(pct, 100)}%`, background: tone }} />
+                          <td className="py-3 px-3 text-muted-foreground text-xs">{m.primaryTeam}</td>
+                          <td className="py-3 px-3 text-right">{support}</td>
+                          <td className="py-3 px-3 text-right">{pillars}</td>
+                          <td className="py-3 px-3 text-right">{init}</td>
+                          <td className="py-3 px-3 text-right">{tools}</td>
+                          <td className="py-3 px-3 text-right">{eks}</td>
+                          <td className="py-3 px-3 text-right">{adhoc}</td>
+                          <td className="py-3 px-3 text-right font-semibold">{total}</td>
+                          <td className="py-3 px-4 w-36">
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                                <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: barColor }} />
                               </div>
-                              <span className="text-[10px] font-mono w-10 text-right" style={{ color: tone }}>{pct}%</span>
+                              <span className="text-xs font-medium w-10 text-right tabular-nums">{pct}%</span>
                             </div>
                           </td>
                         </tr>
@@ -362,31 +396,73 @@ function Dashboard() {
                   </tbody>
                 </table>
               </div>
-            </Panel>
+            </Card>
           </TabsContent>
 
           <TabsContent value="ops">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Panel code="OPS.01" title="Tools ownership" subtitle="10 tools recently transitioned to SRE">
-                <div className="grid grid-cols-2 gap-1.5">
-                  {TOOLS.map((t, i) => (
-                    <div key={t} className="flex items-center justify-between border border-border bg-sidebar/40 px-3 py-2 rounded-sm">
-                      <div className="flex items-center gap-2">
-                        <Wrench className="h-3 w-3 text-accent" />
-                        <span className="text-xs">{t}</span>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <Card>
+                <CardHeader
+                  icon={<Wrench className="h-4 w-4" />}
+                  title="Tools Ownership"
+                  subtitle="10 tools managed by the SRE team"
+                />
+                <div className="px-5 pb-5">
+                  <div className="grid grid-cols-2 gap-2">
+                    {TOOLS.map((t, i) => (
+                      <div
+                        key={t}
+                        className="flex items-center gap-3 px-4 py-3 rounded-xl bg-muted/40 border border-border/60 hover:border-[var(--chart-1)]/30 hover:bg-[var(--chart-1)]/5 transition-all"
+                      >
+                        <div className="h-8 w-8 rounded-lg bg-[var(--chart-1)]/10 flex items-center justify-center shrink-0">
+                          <Zap className="h-4 w-4 text-[var(--chart-1)]" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate">{t}</div>
+                          <div className="text-[11px] text-muted-foreground">Tool {i + 1}</div>
+                        </div>
                       </div>
-                      <span className="text-[10px] font-mono text-muted-foreground">T.{String(i + 1).padStart(2, "0")}</span>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+
+              <Card>
+                <CardHeader
+                  icon={<Server className="h-4 w-4" />}
+                  title="Operations Summary"
+                  subtitle="EKS admin, tools support & adhoc effort"
+                />
+                <div className="px-5 pb-5 space-y-4">
+                  <SummaryRow
+                    icon={<Box className="h-4 w-4" />}
+                    label="EKS Administration"
+                    value={data.reduce((s, a) => s + a.eksAdmin, 0)}
+                    color="var(--chart-5)"
+                  />
+                  <SummaryRow
+                    icon={<Wrench className="h-4 w-4" />}
+                    label="Tools Support"
+                    value={data.reduce((s, a) => s + a.toolsSupport, 0)}
+                    color="var(--chart-4)"
+                  />
+                  <SummaryRow
+                    icon={<AlertTriangle className="h-4 w-4" />}
+                    label="Adhoc / Unplanned"
+                    value={data.reduce((s, a) => s + a.adhoc, 0)}
+                    color="var(--destructive)"
+                  />
+                  <div className="pt-2 border-t border-border">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Total Ops Effort</span>
+                      <span className="text-2xl font-bold">
+                        {data.reduce((s, a) => s + a.eksAdmin + a.toolsSupport + a.adhoc, 0)}
+                        <span className="text-sm text-muted-foreground ml-1 font-normal">SP</span>
+                      </span>
                     </div>
-                  ))}
+                  </div>
                 </div>
-              </Panel>
-              <Panel code="OPS.02" title="EKS administration" subtitle="Sustained admin effort across clusters">
-                <div className="space-y-3">
-                  <OpsRow icon={<Box className="h-3.5 w-3.5" />} label="Quarter EKS effort" value={data.reduce((s, a) => s + a.eksAdmin, 0)} />
-                  <OpsRow icon={<Wrench className="h-3.5 w-3.5" />} label="Tools support effort" value={data.reduce((s, a) => s + a.toolsSupport, 0)} />
-                  <OpsRow icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Adhoc / unplanned" value={data.reduce((s, a) => s + a.adhoc, 0)} tone="warn" />
-                </div>
-              </Panel>
+              </Card>
             </div>
           </TabsContent>
         </Tabs>
@@ -394,6 +470,8 @@ function Dashboard() {
     </div>
   );
 }
+
+/* ─── components ─── */
 
 function Header({
   quarter, onQuarter, jiraConnected, onConnect,
@@ -403,77 +481,89 @@ function Header({
 }) {
   const [token, setToken] = useState("");
   const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <header className="border-b border-border bg-sidebar/90 backdrop-blur sticky top-0 z-10">
+    <header className="bg-card/80 backdrop-blur-xl border-b border-border sticky top-0 z-20">
       <div className="mx-auto max-w-[1400px] px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-sm border border-primary/40 bg-primary/15 flex items-center justify-center">
-            <Cpu className="h-4 w-4 text-primary" />
+          <div className="h-10 w-10 rounded-xl bg-[var(--primary)]/10 flex items-center justify-center">
+            <Sparkles className="h-5 w-5 text-[var(--primary)]" />
           </div>
           <div>
-            <h1 className="text-base font-bold tracking-tight">SRE Capacity Tracker</h1>
-            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-              Operational velocity · resource allocation
-            </p>
+            <h1 className="text-lg font-bold tracking-tight">SRE Capacity Tracker</h1>
+            <p className="text-xs text-muted-foreground">Resource allocation & sprint planning</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-sm border border-border bg-card/60 p-0.5">
-            {QUARTERS.map((q) => (
-              <button
-                key={q}
-                onClick={() => onQuarter(q)}
-                className={`px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[2px] transition-colors ${
-                  q === quarter ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {q}
-              </button>
-            ))}
+
+        <div className="flex items-center gap-3">
+          {/* Quarter selector */}
+          <div className="relative">
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-background hover:bg-muted/50 transition-colors text-sm font-medium"
+            >
+              {quarter}
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-40 bg-card border border-border rounded-xl shadow-lg overflow-hidden z-30">
+                {QUARTERS.map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => { onQuarter(q); setMenuOpen(false); }}
+                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-muted ${q === quarter ? "bg-primary/10 text-primary font-medium" : ""}`}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <Button variant="outline" size="sm" className="rounded-sm font-mono text-[11px] uppercase tracking-widest">
-            <RefreshCw className="h-3 w-3 mr-1.5" /> Sync
+
+          <Button variant="outline" size="sm" className="rounded-xl font-medium">
+            <RefreshCw className="h-4 w-4 mr-2" /> Sync
           </Button>
+
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button
                 size="sm"
-                className={`rounded-sm font-mono text-[11px] uppercase tracking-widest ${
+                className={`rounded-xl font-medium ${
                   jiraConnected
-                    ? "bg-accent/15 text-accent border border-accent/40 hover:bg-accent/25"
-                    : "bg-accent text-accent-foreground hover:bg-accent/90"
+                    ? "bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30 hover:bg-[var(--accent)]/25"
+                    : ""
                 }`}
               >
-                <KeyRound className="h-3 w-3 mr-1.5" />
+                <KeyRound className="h-4 w-4 mr-2" />
                 {jiraConnected ? "Jira Linked" : "Connect Jira"}
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="rounded-2xl">
               <DialogHeader>
-                <DialogTitle>Connect Jira</DialogTitle>
+                <DialogTitle className="text-lg font-bold">Connect Jira</DialogTitle>
                 <DialogDescription>
-                  Paste your Atlassian personal access token. We'll pull sprints, story points and labels per member.
+                  Link your Atlassian account to pull sprint data, story points and labels automatically.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-3 pt-2">
+              <div className="space-y-4 pt-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="jira-url">Jira base URL</Label>
-                  <Input id="jira-url" placeholder="https://yourorg.atlassian.net" />
+                  <Input id="jira-url" className="rounded-xl" placeholder="https://yourorg.atlassian.net" />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="jira-email">Email</Label>
-                  <Input id="jira-email" type="email" placeholder="you@company.com" />
+                  <Input id="jira-email" className="rounded-xl" type="email" placeholder="you@company.com" />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="jira-token">Personal Access Token</Label>
-                  <Input id="jira-token" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="ATATT3xFfGF0..." />
+                  <Input id="jira-token" className="rounded-xl" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="ATATT3xFfGF0..." />
                 </div>
-                <Button className="w-full" onClick={() => { onConnect(); setOpen(false); }}>
+                <Button className="w-full rounded-xl" onClick={() => { onConnect(); setOpen(false); }}>
                   Save & sync
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Token is stored locally in this prototype. Hook up Lovable Cloud to persist securely.
+                  Token stored locally. Enable Lovable Cloud for secure persistence.
                 </p>
               </div>
             </DialogContent>
@@ -485,97 +575,86 @@ function Header({
 }
 
 function KpiCard({
-  code, icon, label, value, sub, tone = "neutral", spark,
+  icon, label, value, sub, tone = "neutral",
 }: {
-  code: string;
   icon: React.ReactNode; label: string; value: string; sub: string;
   tone?: "neutral" | "ok" | "warn" | "danger";
-  spark?: number[];
 }) {
   const color =
     tone === "danger" ? "var(--destructive)" :
-    tone === "warn" ? "var(--warning)" :
-    tone === "ok" ? "var(--accent)" :
+    tone === "warn" ? "var(--chart-3)" :
+    tone === "ok" ? "var(--chart-2)" :
     "var(--foreground)";
 
   return (
-    <div className="border border-border bg-card/40 rounded-sm overflow-hidden group hover:border-primary/40 transition-colors">
-      <div className="px-4 py-2 border-b border-border bg-sidebar/40 flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-        <span>{code} · {label}</span>
-        {icon}
+    <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {icon}
+          {label}
+        </div>
       </div>
-      <div className="p-4 relative">
-        <div className="text-3xl font-mono font-semibold tracking-tight" style={{ color }}>
+      <div className="mt-3">
+        <div className="text-3xl font-bold tracking-tight" style={{ color }}>
           {value}
         </div>
-        <div className="mt-1 text-[11px] text-muted-foreground">{sub}</div>
-        {spark && spark.length > 0 && (
-          <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="absolute right-3 top-3 h-8 w-20 opacity-70">
-            <polyline
-              fill="none"
-              stroke={color}
-              strokeWidth="1.5"
-              points={spark.map((v, i) => {
-                const max = Math.max(...spark);
-                const min = Math.min(...spark);
-                const x = (i / (spark.length - 1)) * 100;
-                const y = 28 - ((v - min) / Math.max(1, max - min)) * 24;
-                return `${x},${y}`;
-              }).join(" ")}
-            />
-          </svg>
-        )}
+        <div className="mt-1 text-xs text-muted-foreground">{sub}</div>
       </div>
     </div>
   );
 }
 
-function Panel({ code, title, subtitle, children }: { code: string; title: string; subtitle?: string; children: React.ReactNode }) {
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className="border border-border bg-card/40 rounded-sm">
-      <div className="border-b border-border px-5 py-2.5 flex items-center justify-between">
-        <div>
-          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{code}</div>
-          <h3 className="text-sm font-semibold mt-0.5">{title}</h3>
-          {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>}
-        </div>
-        <Radio className="h-3 w-3 text-accent animate-pulse" />
+    <div className={`bg-card border border-border rounded-2xl shadow-sm hover:shadow-md transition-shadow ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function CardHeader({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle?: string }) {
+  return (
+    <div className="px-5 pt-5 pb-3 flex items-start gap-3">
+      <div className="h-8 w-8 rounded-lg bg-[var(--primary)]/10 flex items-center justify-center text-[var(--primary)] shrink-0 mt-0.5">
+        {icon}
       </div>
-      <div className="p-5">{children}</div>
+      <div>
+        <h3 className="font-semibold text-base">{title}</h3>
+        {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
+function SummaryRow({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: string }) {
+  return (
+    <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/40 border border-border/60">
+      <div className="flex items-center gap-3">
+        <span style={{ color }}>{icon}</span>
+        <span className="text-sm font-medium">{label}</span>
+      </div>
+      <span className="text-xl font-bold tabular-nums" style={{ color }}>
+        {value}<span className="text-xs text-muted-foreground ml-1 font-normal">SP</span>
+      </span>
     </div>
   );
 }
 
 function Legend2({ items }: { items: [string, string][] }) {
   return (
-    <div className="flex flex-wrap gap-x-5 gap-y-1.5 mb-4">
+    <div className="flex flex-wrap gap-x-5 gap-y-2 mb-4">
       {items.map(([label, color]) => (
         <div key={label} className="flex items-center gap-2">
-          <span className="h-2 w-2" style={{ background: color }} />
-          <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{label}</span>
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+          <span className="text-xs font-medium text-muted-foreground">{label}</span>
         </div>
       ))}
     </div>
   );
 }
 
-function OpsRow({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: number; tone?: "warn" }) {
-  const color = tone === "warn" ? "var(--warning)" : "var(--foreground)";
-  return (
-    <div className="flex items-center justify-between border border-border bg-sidebar/40 px-4 py-3 rounded-sm">
-      <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
-        <span className="text-accent">{icon}</span>
-        <span className="uppercase tracking-wider">{label}</span>
-      </div>
-      <span className="text-2xl font-mono font-semibold" style={{ color }}>
-        {value}<span className="text-[10px] text-muted-foreground ml-1">SP</span>
-      </span>
-    </div>
-  );
-}
-
-function pillarIcon(p: string) {
-  const map: Record<string, React.ReactNode> = {
+function pillarIcon(p: Pillar) {
+  const map: Record<Pillar, React.ReactNode> = {
     Cost: <TrendingUp className="h-3.5 w-3.5" />,
     Monitoring: <Activity className="h-3.5 w-3.5" />,
     Security: <Shield className="h-3.5 w-3.5" />,
@@ -586,10 +665,11 @@ function pillarIcon(p: string) {
 }
 
 const tooltipStyle = {
-  background: "var(--popover)",
+  background: "var(--card)",
   border: "1px solid var(--border)",
-  borderRadius: "2px",
-  color: "var(--popover-foreground)",
-  fontSize: "11px",
-  fontFamily: "var(--font-mono)",
+  borderRadius: "12px",
+  color: "var(--foreground)",
+  fontSize: "12px",
+  padding: "8px 12px",
+  boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
 };
