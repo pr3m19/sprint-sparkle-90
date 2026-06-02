@@ -145,5 +145,19 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    background-image:
+      linear-gradient(oklch(0.27 0.025 250 / 0.18) 1px, transparent 1px),
+      linear-gradient(90deg, oklch(0.27 0.025 250 / 0.18) 1px, transparent 1px);
+    background-size: 32px 32px;
+    background-position: -1px -1px;
+  }
+
+  .font-mono,
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
   }
 }
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
