@@ -240,19 +240,24 @@ function Dashboard() {
         {/* Tabs: Leads, Members, Tools */}
         <Tabs defaultValue="leads" className="space-y-6">
           <TabsList className="bg-card border border-border p-1.5 rounded-xl h-auto w-full grid grid-cols-3 gap-1.5">
-            {[
-              ["leads", "Leads & Teams", Users],
-              ["members", "Members", Server],
-              ["ops", "Tools & EKS", Wrench],
-            ].map(([v, l, Icon]) => (
-              <TabsTrigger
-                key={v}
-                value={v}
-                className="rounded-lg text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm text-muted-foreground py-2.5 transition-all flex items-center justify-center gap-2"
-              >
-                <Icon className="h-4 w-4" /> {l}
-              </TabsTrigger>
-            ))}
+            <TabsTrigger
+              value="leads"
+              className="rounded-lg text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm text-muted-foreground py-2.5 transition-all flex items-center justify-center gap-2"
+            >
+              <Users className="h-4 w-4" /> Leads & Teams
+            </TabsTrigger>
+            <TabsTrigger
+              value="members"
+              className="rounded-lg text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm text-muted-foreground py-2.5 transition-all flex items-center justify-center gap-2"
+            >
+              <Server className="h-4 w-4" /> Members
+            </TabsTrigger>
+            <TabsTrigger
+              value="ops"
+              className="rounded-lg text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm text-muted-foreground py-2.5 transition-all flex items-center justify-center gap-2"
+            >
+              <Wrench className="h-4 w-4" /> Tools & EKS
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="leads" className="space-y-6">
